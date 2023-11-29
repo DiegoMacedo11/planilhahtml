@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planilha de Clientes</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <script src="https://rawgit.com/RobinHerbots/Inputmask/5.x/dist/jquery.inputmask.js"></script>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+</head>
+
+<body>
+
+    <h1>Planilha de Vendas da Izadora</h1>
+
+    <button id="addClientBtn">Adicionar Cliente</button>
+
+    <div id="modal">
+        <label for="name">Nome:</label>
+        <input type="text" id="name" required><br>
+
+        <label for="date">Data:</label>
+        <input type="text" id="date" required><br>
+
+        <label for="value">Valor:</label>
+        <input type="text" id="value" required><br>
+
+        <label for="service">Serviço:</label>
+        <select id="service" required>
+            <option value="copy">Copy</option>
+            <option value="mentoria">Mentoria</option>
+            <option value="sala">Sala</option>
+        </select><br>
+
+        <button id="saveClientBtn">Salvar</button>
+        <button id="closeModalBtn">Fechar</button>
+    </div>
+
+    <table id="clientTable">
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>Data</th>
+                <th>Valor (R$)</th>
+                <th>Serviço</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Dados dos clientes serão adicionados aqui -->
+        </tbody>
+    </table>
+
+    <p id="commission">Comissão: R$ 0.00</p>
+
+    <script>
+        $(document).ready(function () {
+            let commission = 0;
+            let clients = JSON.parse(localStorage.getItem('clients')) || [];
+
+            // Carregar dados salvos
+            clients.forEach(function (client) {
+                addClientToTable(client);
+                commission += client.value * 0.025;
+            });
+
+            // Atualizar comissão
+            $('#commission').text(`Comissão: R$ ${commission.toFixed(2)}`);
+
+            // Aplicar Inputmask ao campo de valor
+            $('#value').inputmask('currency', {
+                radixPoint: ',',
+                groupSeparator: '.',
+                allowMinus: false,
+                prefix: 'R$ ',
+                autoUnmask: true,
+            });
+
+            // Aplicar máscara de data ao campo de data
+            $('#date').inputmask('datetime', {
+                inputFormat: 'yyyy-mm-dd',
+                placeholder: 'yyyy-mm-dd',
+                showMaskOnHover: false,
+            });
+
+            // Adicionar o datepicker ao campo de data
+            $('#date').datepicker({
+                dateFormat: 'dd/mm/yy',
+            });
+
+            $('#addClientBtn').click(function () {
+                resetModal();
+                $('#modal').show();
+            });
+
+            $('#closeModalBtn').click(function () {
+                $('#modal').hide();
+            });
+
+            $('#saveClientBtn').click(function () {
+                const name = $('#name').val();
+                const date = $('#date').val();
+                const value = parseFloat($('#value').inputmask('unmaskedvalue'));
+                const service = $('#service').val().toLowerCase(); // Converter para minúsculas
+
+                // Validar campos vazios
+                if (!name || !date || isNaN(value) || !service) {
+                    alert('Todos os campos devem ser preenchidos.');
+                    return;
+                }
+
+                // Adicionar cliente à tabela
+                const client = { name, date, value, service };
+
+                const editIndex = $('#saveClientBtn').data('edit-index');
+
+                if (editIndex !== undefined) {
+                    // Edição de um cliente existente
+                    clients[editIndex] = client;
+                    $('#clientTable tbody tr').eq(editIndex).replaceWith(getTableRow(client));
+                } else {
+                    // Adição de um novo cliente
+                    addClientToTable(client);
+                    clients.push(client);
+                }
+
+                // Atualizar comissão
+                commission += value * 0.025;
+                $('#commission').text(`Comissão: R$ ${commission.toFixed(2)}`);
+
+                // Salvar dados no localStorage
+                localStorage.setItem('clients', JSON.stringify(clients));
+
+                // Fechar modal
+                $('#modal').hide();
+            });
+
+            // Delegação de eventos para botões de editar e apagar
+            $('#clientTable').on('click', '.editBtn', function () {
+                const index = $(this).closest('tr').index();
+                const client = clients[index];
+
+                // Preencher campos do modal com dados do cliente selecionado
+                $('#name').val(client.name);
+                $('#date').val(client.date);
+                $('#value').val(client.value.toFixed(2)).trigger('input'); // Atualizar o valor com Inputmask
+                $('#service').val(client.service);
+
+                // Definir o índice do cliente em edição
+                $('#saveClientBtn').data('edit-index', index);
+
+                // Abrir modal para edição
+                $('#modal').show();
+            });
+
+            $('#clientTable').on('click', '.deleteBtn', function () {
+                const index = $(this).closest('tr').index();
+                const client = clients[index];
+
+                // Remover linha da tabela
+                $(this).closest('tr').remove();
+
+                // Atualizar comissão
+                commission -= client.value * 0.025;
+                $('#commission').text(`Comissão: R$ ${commission.toFixed(2)}`);
+
+                // Remover cliente dos dados salvos
+                clients.splice(index, 1);
+                localStorage.setItem('clients', JSON.stringify(clients));
+            });
+
+            function addClientToTable(client) {
+                $('#clientTable tbody').append(getTableRow(client));
+            }
+
+            function getTableRow(client) {
+                return `<tr>
+                            <td>${client.name}</td>
+                            <td>${formatDate(client.date)}</td>
+                            <td>${formatCurrency(client.value)}</td>
+                            <td>${client.service}</td>
+                            <td>
+                                <button class="editBtn">Editar</button>
+                                <button class="deleteBtn">Apagar</button>
+                            </td>
+                        </tr>`;
+            }
+
+            function resetModal() {
+                $('#name').val('');
+                $('#date').val('');
+                $('#value').val('');
+                $('#service').val('');
+                $('#saveClientBtn').removeData('edit-index');
+            }
+
+            function formatCurrency(value) {
+                return new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                }).format(value);
+            }
+
+            function formatDate(date) {
+                const formattedDate = new Date(date);
+                const day = formattedDate.getDate().toString().padStart(2, '0');
+                const month = (formattedDate.getMonth() + 1).toString().padStart(2, '0');
+                const year = formattedDate.getFullYear();
+                return `${day}/${month}/${year}`;
+            }
+        });
+    </script>
+
+    <style>
+        #datepicker-icon {
+            font-size: 20px;
+            cursor: pointer;
+        }
+    </style>
+
+</body>
+
+</html>
